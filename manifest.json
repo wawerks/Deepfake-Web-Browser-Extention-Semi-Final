@@ -1,15 +1,35 @@
 {
   "manifest_version": 3,
-  "name": "AI Image Deepfake Detector",
-  "version": "1.0",
-  "description": "Detect deepfake or AI-generated faces directly from right-click context menu.",
-  "permissions": ["contextMenus", "activeTab", "scripting", "notifications"],
-  "host_permissions": ["http://127.0.0.1:8000/*"],
+  "name": "AI Image Deepfake Guard",
+  "version": "2.0.1",
+  "description": "Detect deepfake or AI-generated images with real-time scanning and right-click detection.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "notifications",
+    "storage",
+    "webRequest",
+    "tabs",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "https://*.facebook.com/*",
+    "https://*.fbcdn.net/*"
+  ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
-    "default_title": "AI Image Detector"
+    "default_popup": "popup.html",
+    "default_title": "AI Image Guard",
+    "default_icon": {
+      "16": "icon1.jpg",
+      "48": "icon2.jpg",
+      "128": "icon3.jpg"
+    }
   },
   "icons": {
     "16": "icon1.jpg",
@@ -19,14 +39,28 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["cropper.min.js", "content.js"],
-      "css": ["cropper.min.css"]
+      "js": ["cropper.min.js", "content-main.js"],
+      "css": ["cropper.min.css", "styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["content-facebook.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["cropper.min.js", "cropper.min.css"],
-      "matches": ["<all_urls>"]
+      "resources": ["cropper.min.js", "cropper.min.css", "icon1.jpg", "icon2.jpg", "icon3.jpg", "icons/*.png"],
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": true
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 https://*.facebook.com;"
+  }
 }

@@ -10,3 +10,5 @@ safetensors
 fastapi
 opencv-python
 python-multipart
+timm>=0.9.0
+python-dotenv

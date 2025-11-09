@@ -1,44 +1,42 @@
-document.addEventListener('DOMContentLoaded', () => {
-  chrome.runtime.sendMessage({ action: 'getToken' }, (res) => {
-    if (res && res.token) {
-      document.getElementById('hfToken').value = res.token;
+document.addEventListener("DOMContentLoaded", () => {
+  const resultsDiv = document.getElementById("results");
+
+  // Get saved data from background.js
+  chrome.storage.local.get(["lastDetection"], (data) => {
+    if (!data.lastDetection) {
+      resultsDiv.innerHTML = "<p>No recent detection found.</p>";
+      return;
     }
-  });
-  chrome.runtime.sendMessage({ action: 'getSettings' }, (res) => {
-    const s = res && res.settings;
-    if (s) {
-      const modeEl = document.getElementById('inferenceMode');
-      const urlEl = document.getElementById('backendUrl');
-      if (modeEl) modeEl.value = s.inference_mode || 'hf';
-      if (urlEl) urlEl.value = s.backend_url || 'http://localhost:8000';
-    }
-  });
-});
 
-document.getElementById('saveToken').addEventListener('click', () => {
-  const token = document.getElementById('hfToken').value.trim();
-  chrome.runtime.sendMessage({ action: 'setToken', token }, (res) => {
-    console.log('Token saved', res);
-  });
-});
+    const detection = data.lastDetection;
+    const { model_results, final_decision } = detection;
 
-// Open review page
-const openReview = document.getElementById('openReview');
-if (openReview) {
-  openReview.addEventListener('click', () => {
-    const url = chrome.runtime.getURL('detected.html');
-    chrome.tabs.create({ url });
-  });
-}
+    let html = "<h2>🧠 Model Predictions</h2>";
 
-// Save inference settings (mode + backend URL)
-const saveSettingsBtn = document.getElementById('saveSettings');
-if (saveSettingsBtn) {
-  saveSettingsBtn.addEventListener('click', () => {
-    const mode = document.getElementById('inferenceMode').value;
-    const url = document.getElementById('backendUrl').value.trim();
-    chrome.runtime.sendMessage({ action: 'setSettings', inference_mode: mode, backend_url: url }, (res) => {
-      console.log('Settings saved', res);
+    model_results.forEach(r => {
+      const emoji = r.label === "REAL" ? "✅" : (r.label === "FAKE" ? "❌" : "⚠️");
+      html += `
+        <div class="result-item">
+          <span class="result-label">${emoji} ${r.model}</span>
+          <span>${r.label}</span>
+          <span class="result-confidence">(${(r.confidence * 100).toFixed(2)}%)</span>
+        </div>
+      `;
     });
+
+    // Ensemble summary
+    const label = final_decision.final_label;
+    let cls = "uncertain";
+    if (label.includes("Real")) cls = "real";
+    else if (label.includes("Deepfake")) cls = "fake";
+
+    html += `
+      <div class="final-decision ${cls}">
+        <p>${label}</p>
+        <p>Real: ${final_decision.real_confidence}% | Fake: ${final_decision.fake_confidence}%</p>
+      </div>
+    `;
+
+    resultsDiv.innerHTML = html;
   });
-}
+});

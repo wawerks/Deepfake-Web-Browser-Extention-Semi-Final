@@ -1,33 +1,304 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>AI Image Detector</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Image Guard</title>
   <style>
-    body { width: 260px; padding: 10px; font-family: Arial, sans-serif; }
-    label { display: block; margin-top: 8px; font-size: 12px; color: #333; }
-    input[type="text"], input[type="password"] { width: 100%; box-sizing: border-box; padding: 6px; margin-top: 4px; }
-    .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-    button { flex: 1; padding: 8px; cursor: pointer; }
-    .small { font-size: 11px; color: #666; }
+    :root {
+      --primary-color: #4a6fa5;
+      --primary-hover: #3a5a8c;
+      --secondary-color: #6c757d;
+      --success-color: #28a745;
+      --danger-color: #dc3545;
+      --warning-color: #ffc107;
+      --light-bg: #f8f9fa;
+      --border-color: #dee2e6;
+      --text-color: #333;
+      --text-light: #6c757d;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      width: 320px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.5;
+      color: var(--text-color);
+      background-color: white;
+      padding: 0;
+      margin: 0;
+    }
+    
+    .header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 15px;
+      text-align: center;
+      position: relative;
+    }
+    
+    .header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    
+    .header .version {
+      font-size: 0.7rem;
+      opacity: 0.8;
+      margin-top: 2px;
+    }
+    
+    .content {
+      padding: 15px;
+    }
+    
+    .status-card {
+      background-color: var(--light-bg);
+      border-radius: 8px;
+      padding: 12px 15px;
+      margin-bottom: 15px;
+      border-left: 4px solid var(--secondary-color);
+    }
+    
+    .status-card.online {
+      border-left-color: var(--success-color);
+    }
+    
+    .status-card.offline {
+      border-left-color: var(--danger-color);
+    }
+    
+    .status-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-indicator.online {
+      background-color: var(--success-color);
+      box-shadow: 0 0 8px var(--success-color);
+    }
+    
+    .status-indicator.offline {
+      background-color: var(--danger-color);
+    }
+    
+    .status-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    
+    .status-details {
+      font-size: 0.85rem;
+      color: var(--text-light);
+    }
+    
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 10px 15px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .btn-primary {
+      background-color: var(--primary-color);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+    
+    .btn-outline {
+      background-color: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+    }
+    
+    .btn-outline:hover {
+      background-color: var(--light-bg);
+    }
+    
+    .btn-danger {
+      background-color: var(--danger-color);
+      color: white;
+    }
+    
+    .btn-danger:hover {
+      background-color: #c82333;
+    }
+    
+    .btn-icon {
+      margin-right: 8px;
+    }
+    
+    .quick-stats {
+      display: flex;
+      justify-content: space-between;
+      margin: 15px 0;
+      text-align: center;
+    }
+    
+    .stat-item {
+      flex: 1;
+      padding: 8px;
+    }
+    
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--primary-color);
+      line-height: 1.2;
+    }
+    
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .footer {
+      padding: 10px 15px;
+      border-top: 1px solid var(--border-color);
+      font-size: 0.75rem;
+      color: var(--text-light);
+      text-align: center;
+    }
+    
+    .footer a {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+    
+    .footer a:hover {
+      text-decoration: underline;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+    
+    #loading {
+      text-align: center;
+      padding: 20px 0;
+    }
+    
+    .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid rgba(0, 0, 0, 0.1);
+      border-radius: 50%;
+      border-top-color: var(--primary-color);
+      animation: spin 1s ease-in-out infinite;
+      margin: 0 auto 10px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
-  <label for="hfToken">Hugging Face API Token</label>
-  <input id="hfToken" type="password" placeholder="hf_..." />
-  <div class="row">
-    <button id="saveToken">Save Token</button>
+  <div class="header">
+    <h1>AI Image Guard</h1>
+    <div class="version">v2.0</div>
   </div>
-  <label for="inferenceMode">Inference Mode</label>
-  <select id="inferenceMode" style="width:100%; padding:6px;">
-    <option value="hf">Hugging Face API</option>
-    <option value="backend">Custom Backend</option>
-  </select>
-  <label for="backendUrl">Backend URL</label>
-  <input id="backendUrl" type="text" placeholder="http://localhost:8000" />
-  <div class="row">
-    <button id="saveSettings">Save Settings</button>
+  
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Loading...</div>
   </div>
-  <button id="openReview">View Flagged Images</button>
-  <script src="popup.js"></script>
+  
+  <div id="content" class="content" style="display: none;">
+    <div id="statusCard" class="status-card">
+      <div class="status-header">
+        <div id="statusIndicator" class="status-indicator"></div>
+        <div id="statusTitle" class="status-title">Checking server status...</div>
+      </div>
+      <div id="statusDetails" class="status-details">Connecting to detection server</div>
+    </div>
+    
+    <div class="quick-stats">
+      <div class="stat-item">
+        <div id="scannedCount" class="stat-value">0</div>
+        <div class="stat-label">Scanned</div>
+      </div>
+      <div class="stat-item">
+        <div id="detectedCount" class="stat-value">0</div>
+        <div class="stat-label">Detected</div>
+      </div>
+      <div class="stat-item">
+        <div id="accuracyRate" class="stat-value">-</div>
+        <div class="stat-label">Accuracy</div>
+      </div>
+    </div>
+    
+    <button id="scanPageBtn" class="btn btn-primary">
+      <span class="btn-icon">🔍</span> Scan Current Page
+    </button>
+    
+    <button id="checkImageBtn" class="btn btn-outline">
+      <span class="btn-icon">🖼️</span> Check Image from Clipboard
+    </button>
+    
+    <div style="margin: 15px 0; text-align: center;">
+      <a href="#" id="viewHistory" style="font-size: 0.8rem; color: var(--primary-color); text-decoration: none;">View Scan History</a>
+    </div>
+    
+    <div style="display: flex; justify-content: space-between; margin-top: 15px;">
+      <button id="settingsBtn" class="btn btn-outline" style="width: 48%;">
+        <span class="btn-icon">⚙️</span> Settings
+      </button>
+      <button id="helpBtn" class="btn btn-outline" style="width: 48%;">
+        <span class="btn-icon">❓</span> Help
+      </button>
+    </div>
+  </div>
+  
+  <div class="footer">
+    AI Image Guard &copy; 2023 | <a href="#" id="privacyLink">Privacy Policy</a>
+  </div>
+  
+  <script>
+    chrome.storage.local.get("lastDetection", (data) => {
+      const el = document.getElementById("result");
+      if (!data.lastDetection) return;
+
+      const { final_decision, model_results, timestamp } = data.lastDetection;
+      const { final_label, real_confidence, fake_confidence } = final_decision;
+
+      const time = new Date(timestamp).toLocaleTimeString();
+      const cls = final_label.includes("Real") ? "real" :
+                  final_label.includes("Uncertain") ? "uncertain" : "fake";
+
+      let html = `<div class="label ${cls}">${final_label}</div>`;
+      html += `<div>Real: ${real_confidence}% | Fake: ${fake_confidence}%</div>`;
+      html += `<div style="margin-top:8px;font-size:11px;color:#666;">${time}</div>`;
+
+      el.innerHTML = html;
+      el.className = `result`;
+    });
+  </script>
 </body>
 </html>
