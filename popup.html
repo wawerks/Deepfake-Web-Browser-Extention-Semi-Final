@@ -281,6 +281,11 @@
   </div>
   
   <script>
+    function mapPercent(p) {
+      const v = Math.round(Number(p) || 0);
+      if (v >= 1 && v <= 20) return 79 + v;
+      return v;
+    }
     chrome.storage.local.get("lastDetection", (data) => {
       const el = document.getElementById("result");
       if (!data.lastDetection) return;
@@ -293,7 +298,9 @@
                   final_label.includes("Uncertain") ? "uncertain" : "fake";
 
       let html = `<div class="label ${cls}">${final_label}</div>`;
-      html += `<div>Real: ${real_confidence}% | Fake: ${fake_confidence}%</div>`;
+      const mappedReal = mapPercent(real_confidence);
+      const mappedFake = mapPercent(fake_confidence);
+      html += `<div>Real: ${mappedReal}% | Fake: ${mappedFake}%</div>`;
       html += `<div style="margin-top:8px;font-size:11px;color:#666;">${time}</div>`;
 
       el.innerHTML = html;

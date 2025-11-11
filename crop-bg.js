@@ -13,6 +13,13 @@ function getServerUrl() {
   });
 }
 
+// Map API percentage to display percentage per requirement
+function mapDisplayPercent(rawPct) {
+  const v = Math.round(Number(rawPct) || 0);
+  if (v >= 1 && v <= 20) return 79 + v; // 1..20 -> 80..99
+  return v; // 0 or >=20 unchanged
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === 'settingsUpdated' && msg.settings?.serverUrl) {
     SERVER_URL_CACHE = msg.settings.serverUrl;
@@ -97,7 +104,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         const data = await response.json();
 
         if (data && data.status === 'success' && typeof data.is_fake === 'boolean') {
-          const confPct = Math.round((data.confidence || 0) * 100);
+          const confPctRaw = Math.round((data.confidence || 0) * 100);
+          const confPct = mapDisplayPercent(confPctRaw);
           const title = 'Analysis Complete';
           const msg = data.is_fake
             ? `Likely AI-generated\nConfidence: ${confPct}%`
@@ -106,7 +114,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         } else if (data && data.final_decision) {
           const { final_label, real_confidence, fake_confidence } = data.final_decision;
           const title = 'Analysis Complete';
-          const msg = `${final_label}\nReal: ${real_confidence}% | Fake: ${fake_confidence}%`;
+          const realPct = mapDisplayPercent(Number(real_confidence) || 0);
+          const fakePct = mapDisplayPercent(Number(fake_confidence) || 0);
+          const msg = `${final_label}\nReal: ${realPct}% | Fake: ${fakePct}%`;
           sendToast(tab && tab.id, title, msg, 'info');
         } else if (data && data.error) {
           sendToast(tab && tab.id, "Analysis Error", String(data.error), 'error');
