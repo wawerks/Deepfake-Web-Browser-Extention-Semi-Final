@@ -91,9 +91,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'analyzeImage') {
-    // request.imageData is a data URL (base64) from content-facebook.js
     (async () => {
       try {
+        try { chrome.storage?.local?.set({ lastToast: { title: 'AI Image Guard', message: 'Analyzing image', type: 'info', ts: Date.now() } }); } catch (_) {}
         const blob = dataURLToBlob(request.imageData);
         const formData = new FormData();
         formData.append('file', new File([blob], 'upload.jpg', { type: blob.type || 'image/jpeg' }));
@@ -109,9 +109,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         const result = await resp.json();
+        const confVal = Number(result?.confidence);
+        if (!isFinite(confVal) || confVal <= 0 || result?.error) {
+          try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis unavailable', message: String(result?.error || 'Service limit reached or invalid response'), type: 'error', ts: Date.now() } }); } catch (_) {}
+          sendResponse({ success: false, error: String(result?.error || 'Invalid result') });
+          return;
+        }
+        try {
+          const confidencePct = Math.round(((result?.confidence) || 0) * 100);
+          const complement = Math.max(0, 100 - confidencePct);
+          if (result?.is_fake) {
+            chrome.storage?.local?.set({ lastToast: { title: 'Likely AI-generated', message: `Confidence: ${confidencePct}%\nReal: ${complement}%`, type: 'warning', ts: Date.now() } });
+          } else if (result?.no_face) {
+            chrome.storage?.local?.set({ lastToast: { title: 'Analysis complete', message: 'No face detected in the image', type: 'info', ts: Date.now() } });
+          } else {
+            chrome.storage?.local?.set({ lastToast: { title: 'Likely real', message: `Confidence: ${confidencePct}%\nAI: ${complement}%`, type: 'success', ts: Date.now() } });
+          }
+        } catch (_) {}
         sendResponse({ success: true, result });
       } catch (e) {
         console.error('analyzeImage failed:', e);
+        try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis error', message: String(e?.message || 'Analyze failed'), type: 'error', ts: Date.now() } }); } catch (_) {}
         sendResponse({ success: false, error: e.message || 'Analyze failed' });
       }
     })();
@@ -121,7 +139,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'classifyUrl' && request.url) {
     (async () => {
       try {
-        // Preferred: fetch bytes client-side and upload as file for consistent content
+        try { chrome.storage?.local?.set({ lastToast: { title: 'AI Image Guard', message: 'Analyzing image', type: 'info', ts: Date.now() } }); } catch (_) {}
         let blob;
         try {
           const imgResp = await fetch(request.url, { mode: 'cors' });
@@ -143,6 +161,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             throw new Error(`Server ${resp.status} ${resp.statusText} ${text}`);
           }
           const result = await resp.json();
+          const confVal = Number(result?.confidence);
+          if (!isFinite(confVal) || confVal <= 0 || result?.error) {
+            try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis unavailable', message: String(result?.error || 'Service limit reached or invalid response'), type: 'error', ts: Date.now() } }); } catch (_) {}
+            sendResponse({ success: false, error: String(result?.error || 'Invalid result') });
+            return;
+          }
+          try {
+            const confidencePct = Math.round(((result?.confidence) || 0) * 100);
+            const complement = Math.max(0, 100 - confidencePct);
+            if (result?.is_fake) {
+              chrome.storage?.local?.set({ lastToast: { title: 'Likely AI-generated', message: `Confidence: ${confidencePct}%\nReal: ${complement}%`, type: 'warning', ts: Date.now() } });
+            } else if (result?.no_face) {
+              chrome.storage?.local?.set({ lastToast: { title: 'Analysis complete', message: 'No face detected in the image', type: 'info', ts: Date.now() } });
+            } else {
+              chrome.storage?.local?.set({ lastToast: { title: 'Likely real', message: `Confidence: ${confidencePct}%\nAI: ${complement}%`, type: 'success', ts: Date.now() } });
+            }
+          } catch (_) {}
           sendResponse({ success: true, result });
           return;
         }
@@ -158,9 +193,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           throw new Error(`Server ${resp.status} ${resp.statusText} ${text}`);
         }
         const result = await resp.json();
+        const confVal = Number(result?.confidence);
+        if (!isFinite(confVal) || confVal <= 0 || result?.error) {
+          try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis unavailable', message: String(result?.error || 'Service limit reached or invalid response'), type: 'error', ts: Date.now() } }); } catch (_) {}
+          sendResponse({ success: false, error: String(result?.error || 'Invalid result') });
+          return;
+        }
+        try {
+          const confidencePct = Math.round(((result?.confidence) || 0) * 100);
+          const complement = Math.max(0, 100 - confidencePct);
+          if (result?.is_fake) {
+            chrome.storage?.local?.set({ lastToast: { title: 'Likely AI-generated', message: `Confidence: ${confidencePct}%\nReal: ${complement}%`, type: 'warning', ts: Date.now() } });
+          } else if (result?.no_face) {
+            chrome.storage?.local?.set({ lastToast: { title: 'Analysis complete', message: 'No face detected in the image', type: 'info', ts: Date.now() } });
+          } else {
+            chrome.storage?.local?.set({ lastToast: { title: 'Likely real', message: `Confidence: ${confidencePct}%\nAI: ${complement}%`, type: 'success', ts: Date.now() } });
+          }
+        } catch (_) {}
         sendResponse({ success: true, result });
       } catch (e) {
         console.error('classifyUrl failed:', e);
+        try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis error', message: String(e?.message || 'Classify URL failed'), type: 'error', ts: Date.now() } }); } catch (_) {}
         sendResponse({ success: false, error: e.message || 'Classify URL failed' });
       }
     })();

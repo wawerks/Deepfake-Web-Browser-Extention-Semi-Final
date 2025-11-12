@@ -92,6 +92,9 @@
   let isProcessingUpload = false;
   let currentToast = null;
   let currentToastTimer = null;
+  let currentToastData = null;
+  const CLIENT_ID = Math.random().toString(36).slice(2);
+  let isApplyingStorageToast = false;
 
   // Initialize the scanner when the page is fully loaded
   async function initScanner() {
@@ -104,9 +107,11 @@
         chrome.storage?.sync?.get({
           realTimeScanning: true,
           scanInterval: 3,
+          clickToDetect: false,
         }, (items) => {
           SETTINGS.realTimeScanning = !!items.realTimeScanning;
           SETTINGS.scanInterval = Math.max(1, parseInt(items.scanInterval || 3));
+          SETTINGS.clickToDetect = !!items.clickToDetect;
           resolve();
         });
       });
@@ -205,11 +210,13 @@
       img.style.opacity = '1';
     });
     
-    // Add click handler for analysis
-    img.addEventListener('click', (e) => {
-      e.stopPropagation();
-      analyzeImage(img);
-    });
+    // Add click handler for analysis only if this script's click-to-detect is enabled
+    if (SETTINGS.clickToDetect) {
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        analyzeImage(img);
+      });
+    }
     
     // Add context menu item
     img.addEventListener('contextmenu', (e) => {
@@ -339,22 +346,48 @@
     }
     
     try {
-      // Optional analyzing badge (disabled)
+      showNotification('AI Image Guard', 'Analyzing image', 'info');
       const badge = SHOW_BADGES ? createBadge('Analyzing...', 'info') : null;
       if (badge) addBadgeToImage(img, badge);
       
-      // Get image data
-      const imageData = await getImageData(img);
-      if (!imageData) {
-        throw new Error('Could not get image data');
+      // Prefer classifying by URL for network images to avoid tainted canvas
+      let response = null;
+      const src = getBestImageUrlForFb(img) || img.currentSrc || img.src || '';
+      const isHttp = /^https?:\/\//i.test(src);
+      if (isHttp) {
+        try {
+          response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook' });
+        } catch (_) {
+          response = null; // fall through to other strategies
+        }
       }
-      
-      // Send to background script for processing
-      const response = await chrome.runtime.sendMessage({
-        action: 'analyzeImage',
-        imageData: imageData,
-        source: 'facebook'
-      });
+
+      // Handle blob: URLs by fetching and converting to base64 (no canvas)
+      if (!response && src.startsWith('blob:')) {
+        try {
+          const dataUrl = await blobUrlToDataURL(src);
+          if (dataUrl) {
+            response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData: dataUrl, source: 'facebook' });
+          }
+        } catch (_) {
+          response = null;
+        }
+      }
+
+      // As a last resort, try canvas extraction (may fail on cross-origin)
+      if (!response) {
+        const imageData = await getImageData(img);
+        if (!imageData) {
+          // One more fallback: attempt classifyUrl even if not http(s)
+          try {
+            response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook' });
+          } catch (e) {
+            throw new Error('Could not get image data');
+          }
+        } else {
+          response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData, source: 'facebook' });
+        }
+      }
       
       if (!response || response.error) {
         throw new Error(response?.error || 'Failed to analyze image');
@@ -406,9 +439,51 @@
         const imageData = canvas.toDataURL('image/jpeg', 0.9);
         resolve(imageData);
       } catch (error) {
-        console.error('Error getting image data:', error);
+        // Likely a cross-origin taint; return null quietly so caller can fallback
         resolve(null);
       }
+    });
+  }
+
+  // Choose a good URL for Facebook images (prefer largest srcset/currentSrc)
+  function getBestImageUrlForFb(imgEl) {
+    try {
+      if (!imgEl) return null;
+      const base = (imgEl.ownerDocument && imgEl.ownerDocument.baseURI) || document.baseURI || location.href;
+      const toAbs = (u) => { try { return new URL(u, base).href; } catch (_) { return u; } };
+      const srcset = imgEl.getAttribute('srcset');
+      if (srcset) {
+        const candidates = srcset.split(',').map(s => s.trim()).map(item => {
+          const parts = item.split(' ');
+          const url = parts[0];
+          const w = parts.find(p => p.endsWith('w'));
+          const width = w ? parseInt(w) : 0;
+          return { url: toAbs(url), width };
+        }).filter(c => !!c.url);
+        if (candidates.length) {
+          candidates.sort((a, b) => b.width - a.width);
+          return candidates[0].url;
+        }
+      }
+      if (imgEl.currentSrc) return toAbs(imgEl.currentSrc);
+      return imgEl.src ? toAbs(imgEl.src) : null;
+    } catch (_) {
+      return imgEl && (imgEl.currentSrc || imgEl.src) || null;
+    }
+  }
+
+  // Convert a blob: URL to a data URL without drawing to canvas
+  async function blobUrlToDataURL(blobUrl) {
+    const resp = await fetch(blobUrl);
+    if (!resp.ok) throw new Error(`Blob fetch failed: ${resp.status}`);
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      } catch (e) { reject(e); }
     });
   }
 
@@ -478,6 +553,52 @@
 
   function showNotification(title, message, type = 'info') {
     if (!SHOW_TOASTS) return null;
+    const normalized = {
+      title: String(title || ''),
+      message: String(message || ''),
+      type: String(type || 'info')
+    };
+    if (currentToast && currentToastData &&
+        currentToastData.title === normalized.title &&
+        currentToastData.message === normalized.message &&
+        currentToastData.type === normalized.type) {
+      return currentToast;
+    }
+    if (currentToast) {
+      const variants = {
+        info:   { border: '#0ea5e9', bg: '#0b1220', fg: '#e5f6ff' },
+        success:{ border: '#22c55e', bg: '#0c1a14', fg: '#eafff1' },
+        warning:{ border: '#f59e0b', bg: '#1a150b', fg: '#fff7e6' },
+        error:  { border: '#ef4444', bg: '#1a0b0b', fg: '#ffecec' }
+      };
+      const v = variants[normalized.type] || variants.info;
+      currentToast.style.background = v.bg;
+      currentToast.style.color = v.fg;
+      currentToast.style.borderLeft = `4px solid ${v.border}`;
+      const content = currentToast.firstChild;
+      if (content && content.firstChild) content.firstChild.textContent = normalized.title;
+      if (content && content.children && content.children[1]) content.children[1].textContent = normalized.message;
+      currentToastData = normalized;
+      try {
+        if (!isApplyingStorageToast) {
+          chrome.storage?.local?.set({ lastToast: { title: normalized.title, message: normalized.message, type: normalized.type, ts: Date.now(), source: CLIENT_ID } });
+        }
+      } catch (_) {}
+      if (currentToastTimer) { clearTimeout(currentToastTimer); currentToastTimer = null; }
+      const duration = CONFIG.NOTIFICATION_DURATION || 5000;
+      const isAnalyzing = /^\s*Analyzing/i.test(String(normalized.message || ''));
+      if (!isAnalyzing) {
+        currentToastTimer = setTimeout(() => {
+          if (currentToast && currentToast.parentNode) {
+            currentToast.style.animation = 'fadeOut 200ms ease forwards';
+            const toRemove = currentToast; currentToast = null; currentToastData = null; currentToastTimer = null;
+            setTimeout(() => toRemove.remove(), 200);
+            try { chrome.storage?.local?.set({ lastToast: null }); } catch (_) {}
+          }
+        }, duration);
+      }
+      return currentToast;
+    }
     let container = document.getElementById('deepfake-toast-container');
     if (!container) {
       container = document.createElement('div');
@@ -488,7 +609,6 @@
       document.body.appendChild(container);
     }
 
-    // Only one toast at a time
     clearToasts();
 
     const variants = {
@@ -518,21 +638,39 @@
     closeBtn.setAttribute('aria-label', 'Close notification');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'margin-left:auto;background:transparent;border:none;color:inherit;cursor:pointer;font-size:14px;padding:2px;opacity:.7;';
-    closeBtn.onclick = () => { toast.style.animation = 'slideOut 200ms ease forwards'; setTimeout(() => toast.remove(), 200); };
+    closeBtn.onclick = () => {
+      toast.style.animation = 'slideOut 200ms ease forwards';
+      setTimeout(() => toast.remove(), 200);
+      currentToast = null; currentToastTimer = null; currentToastData = null;
+      try { chrome.storage?.local?.set({ lastToast: null }); } catch (_) {}
+    };
 
     toast.appendChild(content);
     toast.appendChild(closeBtn);
     container.appendChild(toast);
     currentToast = toast;
+    currentToastData = normalized;
 
-    const duration = CONFIG.NOTIFICATION_DURATION || 5000;
-    currentToastTimer = setTimeout(() => {
-      if (toast === currentToast && toast.parentNode) {
-        toast.style.animation = 'fadeOut 200ms ease forwards';
-        setTimeout(() => toast.remove(), 200);
-        currentToast = null; currentToastTimer = null;
+    // Persist toast so it can be rehydrated after page reloads
+    try {
+      if (!isApplyingStorageToast) {
+        chrome.storage?.local?.set({ lastToast: { title: normalized.title, message: normalized.message, type: normalized.type, ts: Date.now(), source: CLIENT_ID } });
       }
-    }, duration);
+    } catch (_) {}
+
+    // Auto-dismiss unless this is an analyzing message, which should persist
+    const duration = CONFIG.NOTIFICATION_DURATION || 5000;
+    const isAnalyzing = /^\s*Analyzing/i.test(String(normalized.message || ''));
+    if (!isAnalyzing) {
+      currentToastTimer = setTimeout(() => {
+        if (toast === currentToast && toast.parentNode) {
+          toast.style.animation = 'fadeOut 200ms ease forwards';
+          setTimeout(() => toast.remove(), 200);
+          currentToast = null; currentToastTimer = null; currentToastData = null;
+          try { chrome.storage?.local?.set({ lastToast: null }); } catch (_) {}
+        }
+      }, duration);
+    }
 
     return toast;
   }
@@ -612,10 +750,26 @@
     document.addEventListener('DOMContentLoaded', () => {
       addStyles();
       initScanner();
+      try {
+        chrome.storage?.local?.get({ lastToast: null }, (items) => {
+          const t = items?.lastToast;
+          if (t && t.title) {
+            showNotification(String(t.title || ''), String(t.message || ''), String(t.type || 'info'));
+          }
+        });
+      } catch (_) {}
     });
   } else {
     addStyles();
     initScanner();
+    try {
+      chrome.storage?.local?.get({ lastToast: null }, (items) => {
+        const t = items?.lastToast;
+        if (t && t.title) {
+          showNotification(String(t.title || ''), String(t.message || ''), String(t.type || 'info'));
+        }
+      });
+    } catch (_) {}
   }
  
   // Listen for toast display requests from background scripts
@@ -641,6 +795,22 @@
             pageScanIntervalId = setInterval(() => {
               try { scanForImages(); } catch (_) {}
             }, Math.max(1000, (SETTINGS.scanInterval || 3) * 1000));
+          }
+        }
+      }
+    });
+    chrome.storage?.onChanged?.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (changes?.lastToast?.newValue) {
+        const t = changes.lastToast.newValue;
+        if (!t) return;
+        if (t.source && t.source === CLIENT_ID) return;
+        if (t.title) {
+          isApplyingStorageToast = true;
+          try {
+            showNotification(String(t.title || ''), String(t.message || ''), String(t.type || 'info'));
+          } finally {
+            isApplyingStorageToast = false;
           }
         }
       }

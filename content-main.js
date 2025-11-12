@@ -45,6 +45,8 @@
     });
   } catch (_) {}
 
+  
+
   // React to settings updates (update flag only)
   try {
     chrome.runtime.onMessage.addListener((msg) => {
@@ -450,4 +452,6 @@
       }
     });
   } catch (_) {}
+
+  // No persistent panel hydration after revert
 })();
