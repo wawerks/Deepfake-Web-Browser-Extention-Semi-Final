@@ -12,12 +12,75 @@ function getServerUrl() {
     });
   });
 }
-
-// Map API percentage to display percentage per requirement
-function mapDisplayPercent(rawPct) {
-  const v = Math.round(Number(rawPct) || 0);
-  return Math.max(0, Math.min(100, 100 - v));
+let SESSION_ID = null;
+function getEnvInfo() {
+  const ua = (self && self.navigator && navigator.userAgent) || '';
+  let os = 'unknown';
+  if (/Windows/i.test(ua)) os = 'Windows'; else if (/Mac OS X/i.test(ua)) os = 'macOS'; else if (/Linux/i.test(ua)) os = 'Linux'; else if (/Android/i.test(ua)) os = 'Android'; else if (/iPhone|iPad|iOS/i.test(ua)) os = 'iOS';
+  let browser = 'Chrome';
+  if (/Edg\//.test(ua)) browser = 'Edge'; else if (/Firefox\//.test(ua)) browser = 'Firefox';
+  return { browser, os, user_agent: ua, device_model: null, network_type: 'unknown' };
 }
+function getSessionId() {
+  if (SESSION_ID) return Promise.resolve(SESSION_ID);
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get({ sessionId: null }, (items) => {
+        if (items && items.sessionId) {
+          SESSION_ID = items.sessionId;
+          resolve(SESSION_ID);
+        } else {
+          const id = 'sess-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
+          chrome.storage.local.set({ sessionId: id }, () => { SESSION_ID = id; resolve(id); });
+        }
+      });
+    } catch (_) {
+      const id = 'sess-' + Math.random().toString(36).slice(2);
+      SESSION_ID = id;
+      resolve(id);
+    }
+  });
+}
+async function hashString(s) {
+  const enc = new TextEncoder();
+  const buf = enc.encode(String(s || ''));
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  const arr = Array.from(new Uint8Array(hash));
+  return arr.map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+async function logDetection(payload, serverUrl) {
+  try {
+    const env = getEnvInfo();
+    const rec = {
+      timestamp: new Date().toISOString(),
+      session_id: await getSessionId(),
+      image_id: payload.image_id || ('img-' + Math.random().toString(36).slice(2)),
+      image_source: payload.image_source || null,
+      ground_truth_label: null,
+      predicted_label: payload.predicted_label || null,
+      confidence_score: typeof payload.confidence_score === 'number' ? Math.max(0, Math.min(1, payload.confidence_score)) : null,
+      pipeline_timings: payload.pipeline_timings || null,
+      api_status: payload.api_status || 'unknown',
+      error_message: payload.error_message || null,
+      user_action: payload.user_action || null,
+      detection_type: payload.detection_type || null,
+      browser: env.browser,
+      os: env.os,
+      network_type: env.network_type,
+      device_model: env.device_model,
+      user_agent: env.user_agent,
+    };
+    const pt = payload.pipeline_timings || {};
+    const apiLat = (isFinite(pt.api_response_end) && isFinite(pt.api_request_start)) ? Math.round((pt.api_response_end - pt.api_request_start) * 1000) : null;
+    const totalLat = (isFinite(pt.notification_sent) && isFinite(pt.capture_start)) ? Math.round((pt.notification_sent - pt.capture_start) * 1000) : null;
+    rec.client_api_latency_ms = apiLat;
+    rec.client_total_latency_ms = totalLat;
+    rec.inference_time_ms = apiLat;
+    await fetch(`${serverUrl || SERVER_URL_CACHE}/log_event`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rec) });
+  } catch (_) {}
+}
+
+// (removed) mapDisplayPercent unused after simplification
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === 'settingsUpdated' && msg.settings?.serverUrl) {
@@ -55,29 +118,7 @@ function sendToast(tabId, title, message, type = 'info') {
   }
 }
 
-// Resize image blob on client to speed up upload/inference
-async function resizeImageBlob(blob, maxEdge = 512) {
-  try {
-    const bmp = await createImageBitmap(blob);
-    const maxDim = Math.max(bmp.width, bmp.height);
-    if (maxDim <= maxEdge) {
-      bmp.close();
-      return blob; // no resize needed
-    }
-    const scale = maxEdge / maxDim;
-    const width = Math.round(bmp.width * scale);
-    const height = Math.round(bmp.height * scale);
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bmp, 0, 0, width, height);
-    const out = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
-    bmp.close();
-    return out;
-  } catch (e) {
-    // Fallback: return original blob if any step fails
-    return blob;
-  }
-}
+// (removed) client-side resize not used in right-click flow
 
 // Handle context menu click
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -87,6 +128,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
     (async () => {
       try {
+        const __tCap = Date.now() / 1000;
+        let __tReq = null;
+        let __tResp = null;
         const serverUrl = await getServerUrl();
 
         // Try to fetch image bytes first for consistent content
@@ -103,24 +147,28 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           const formData = new FormData();
           formData.append('file', new File([blob], 'context-image.jpg', { type: blob.type || 'image/jpeg' }));
 
+          __tReq = Date.now() / 1000;
           const resp = await Promise.race([
             fetch(`${serverUrl}/classify/file`, { method: "POST", body: formData }),
             new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 8000))
           ]);
           if (!resp.ok) throw new Error("Deepfake detection request failed.");
           data = await resp.json();
+          __tResp = Date.now() / 1000;
         } catch (e) {
           // Fallback to server URL path
+          __tReq = Date.now() / 1000;
           const response = await Promise.race([
             fetch(`${serverUrl}/classify/url`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: info.srcUrl, use_vit: true, use_efficientnet: true })
+              body: JSON.stringify({ url: info.srcUrl })
             }),
             new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 8000))
           ]);
           if (!response.ok) throw new Error("Deepfake detection request failed.");
           data = await response.json();
+          __tResp = Date.now() / 1000;
         }
 
         if (data && data.status === 'success' && typeof data.is_fake === 'boolean') {
@@ -131,110 +179,87 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             ? `Likely AI-generated\nConfidence: ${confPct}%\nReal: ${complement}%`
             : `Likely real\nConfidence: ${confPct}%\nAI: ${complement}%`;
           sendToast(tab && tab.id, title, msg, data.is_fake ? 'warning' : 'success');
+          const __tNotif = Date.now() / 1000;
+          const predicted = data.is_fake ? 'FAKE' : 'REAL';
+          logDetection({
+            image_id: 'img-' + (await hashString(info.srcUrl || '')),
+            image_source: info.srcUrl,
+            predicted_label: predicted,
+            confidence_score: Number(data.confidence) || null,
+            api_status: 'success',
+            user_action: 'Right-click detection',
+            detection_type: 'Right-click detection',
+            pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif }
+          }, serverUrl);
         } else if (data && data.final_decision) {
           const { final_label, real_confidence, fake_confidence } = data.final_decision;
           const title = 'Analysis Complete';
           const msg = `${final_label}\nReal: ${real_confidence}% | Fake: ${fake_confidence}%`;
           sendToast(tab && tab.id, title, msg, 'info');
+          const __tNotif = Date.now() / 1000;
+          const labelUp = String(final_label || '').toLowerCase();
+          const predicted = labelUp.includes('real') ? 'REAL' : (labelUp.includes('fake') ? 'FAKE' : 'UNKNOWN');
+          const confPct = predicted === 'REAL' ? Number(real_confidence) : Number(fake_confidence);
+          logDetection({
+            image_id: 'img-' + (await hashString(info.srcUrl || '')),
+            image_source: info.srcUrl,
+            predicted_label: predicted,
+            confidence_score: isFinite(confPct) ? (confPct / 100) : null,
+            api_status: 'success',
+            user_action: 'Right-click detection',
+            detection_type: 'Right-click detection',
+            pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif }
+          }, serverUrl);
         } else if (data && data.error) {
           sendToast(tab && tab.id, "Analysis Error", String(data.error), 'error');
+          const __tNotif = Date.now() / 1000;
+          logDetection({
+            image_id: 'img-' + (await hashString(info.srcUrl || '')),
+            image_source: info.srcUrl,
+            predicted_label: null,
+            confidence_score: null,
+            api_status: 'error',
+            error_message: String(data.error || 'Unknown error'),
+            user_action: 'Right-click detection',
+            detection_type: 'Right-click detection',
+            pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif }
+          }, serverUrl);
         } else {
           sendToast(tab && tab.id, "Analysis Error", "Unexpected server response", 'error');
+          const __tNotif = Date.now() / 1000;
+          logDetection({
+            image_id: 'img-' + (await hashString(info.srcUrl || '')),
+            image_source: info.srcUrl,
+            predicted_label: null,
+            confidence_score: null,
+            api_status: 'error',
+            error_message: 'Unexpected server response',
+            user_action: 'Right-click detection',
+            detection_type: 'Right-click detection',
+            pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif }
+          }, serverUrl);
         }
       } catch (error) {
         console.error("❌ Error in full-image detection:", error);
         sendToast(tab && tab.id, "Analysis Error", error.message || 'Unknown error', 'error');
+        try {
+          const serverUrl = await getServerUrl();
+          const now = Date.now() / 1000;
+          logDetection({
+            image_id: 'img-' + (await hashString(info.srcUrl || '')),
+            image_source: info.srcUrl,
+            predicted_label: null,
+            confidence_score: null,
+            api_status: 'error',
+            error_message: String(error?.message || 'Unknown error'),
+            user_action: 'Right-click detection',
+            detection_type: 'Right-click detection',
+            pipeline_timings: { capture_start: now, api_request_start: now, api_response_end: now, notification_sent: now }
+          }, serverUrl);
+        } catch (_) {}
       }
     })();
   }
 });
 
-// Listen for cropped image data from content.js
-chrome.runtime.onMessage.addListener(async (message, sender) => {
-  if (message.action !== "croppedImageReady") return;
-
-  console.log("📤 Received cropped image data, preparing to send to backend...");
-  const tabId = sender && sender.tab && sender.tab.id;
-  sendToast(tabId, "AI Image Guard", "Analyzing image", 'info');
-
-  try {
-    let blob = message.imageBlob;
-
-    // Decode if necessary
-    if (!blob && message.buffer) {
-      const uint8 = new Uint8Array(message.buffer);
-      blob = new Blob([uint8], { type: message.type || "image/jpeg" });
-    }
-    if (!blob && message.dataUrl) {
-      const [meta, base64] = message.dataUrl.split(",");
-      const mimeMatch = /data:([^;]+);base64/.exec(meta);
-      const mime = (mimeMatch && mimeMatch[1]) || "image/jpeg";
-      const binary = atob(base64);
-      const len = binary.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-      blob = new Blob([bytes], { type: mime });
-    }
-
-    if (!blob || (blob.size !== undefined && blob.size === 0)) {
-      throw new Error("Received empty image blob after decoding.");
-    }
-
-    // Keep original for face detection; use resized for classification
-    const originalBlob = blob;
-    const classifyBlob = await resizeImageBlob(blob, 512);
-
-    const serverUrl = await getServerUrl();
-
-    // Face Detection (blocking). If none, stop and inform user.
-    const faceForm = new FormData();
-    faceForm.append("file", new File([originalBlob], "face_check.jpg", { type: originalBlob.type || "image/jpeg" }));
-    const faceResp = await fetch(`${serverUrl}/detect-face`, { method: "POST", body: faceForm });
-    if (!faceResp.ok) throw new Error("Face detection request failed.");
-    const faceData = await faceResp.json();
-    const hasFace = !!(faceData.has_face || (typeof faceData.face_count === 'number' && faceData.face_count > 0));
-    if (!hasFace) {
-      sendToast(tabId, "AI Image Detector", "❌ No human face detected in crop. Please try a larger crop around the face.", 'warning');
-      return;
-    }
-
-    // Deepfake Detection (only if face found)
-    const formData = new FormData();
-    formData.append("file", new File([classifyBlob], "cropped_face.jpg", { type: classifyBlob.type || "image/jpeg" }));
-
-    const response = await Promise.race([
-      fetch(`${serverUrl}/classify/file`, { method: "POST", body: formData }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 8000))
-    ]);
-
-    if (!response.ok) throw new Error("Deepfake detection request failed.");
-
-    const data = await response.json();
-
-    // Handle server response
-    if (data && data.status === 'success' && typeof data.is_fake === 'boolean') {
-      const confPct = Math.round((data.confidence || 0) * 100);
-      const complement = Math.max(0, 100 - confPct);
-      const emoji = data.is_fake ? '❌' : '✅';
-      const label = data.is_fake ? 'Likely AI-generated' : 'Likely real';
-      const extra = data.is_fake ? `Real: ${complement}%` : `AI: ${complement}%`;
-      const msg = `${emoji} ${label}\nConfidence: ${confPct}%\n${extra}`;
-      sendToast(tabId, "Detection Result", msg, data.is_fake ? 'warning' : 'success');
-    } else if (data && data.final_decision) {
-      // Backward compatibility in case another server format is used
-      const { final_label, real_confidence, fake_confidence } = data.final_decision;
-      let emoji = "❌";
-      if (final_label && final_label.toLowerCase().includes("real")) emoji = "✅";
-      else if (final_label && final_label.toLowerCase().includes("uncertain")) emoji = "⚠️";
-      const msg = `${emoji} ${final_label}\nReal: ${real_confidence}% | Fake: ${fake_confidence}%`;
-      sendToast(tabId, "Detection Result", msg, 'info');
-    } else if (data && data.error) {
-      sendToast(tabId, "AI Image Detector", "Error: " + data.error, 'error');
-    } else {
-      sendToast(tabId, "AI Image Detector", "Unexpected server response.", 'error');
-    }
-  } catch (error) {
-    console.error("❌ Error in background.js:", error);
-    sendToast(tabId, "AI Image Detector", "Error: " + error.message, 'error');
-  }
-});
+// (removed) croppedImageReady flow no longer supported

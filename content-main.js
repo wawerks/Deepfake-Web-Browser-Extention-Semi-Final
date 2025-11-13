@@ -22,21 +22,7 @@
     }
   }
 
-  // Handle messages from the background script
-  function onRuntimeMessage(request, sender, sendResponse) {
-    if (request && request.action === "detectImage" && request.imageUrl) {
-      showCropper(request.imageUrl);
-    }
-  }
-  chrome.runtime.onMessage.addListener(onRuntimeMessage);
-
-  // Handle window messages (e.g., from context menu)
-  function onWindowMessage(event) {
-    if (event.source === window && event.data && event.data.type === "START_CROPPING" && event.data.imageUrl) {
-      showCropper(event.data.imageUrl);
-    }
-  }
-  window.addEventListener("message", onWindowMessage);
+  // Removed legacy cropping message handlers; we now use direct click-to-detect only
 
   // Load setting for click-to-detect
   try {
@@ -56,256 +42,7 @@
     });
   } catch (_) {}
 
-  // Show the cropper UI
-  async function showCropper(imageUrl) {
-    const existing = document.getElementById("ai-detector-overlay");
-    if (existing) existing.remove();
-
-    const overlay = document.createElement("div");
-    overlay.id = "ai-detector-overlay";
-    Object.assign(overlay.style, {
-      position: "fixed",
-      inset: "0",
-      backgroundColor: "rgba(0,0,0,0.8)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 2147483647,
-      flexDirection: "column",
-      padding: "12px"
-    });
-
-    const card = document.createElement("div");
-    Object.assign(card.style, {
-      background: "#111",
-      padding: "12px",
-      borderRadius: "8px",
-      maxWidth: "90vw",
-      maxHeight: "90vh",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "10px"
-    });
-
-    const img = document.createElement("img");
-    img.id = "image-to-crop";
-    img.alt = "Image to crop for deepfake detection";
-    img.style.maxWidth = "80vw";
-    img.style.maxHeight = "60vh";
-    img.style.border = "3px solid white";
-    img.style.objectFit = "contain";
-    img.style.display = "none";
-
-    const loader = document.createElement("div");
-    loader.innerText = "⏳ Loading image...";
-    loader.style.color = "#fff";
-
-    const errText = document.createElement("div");
-    errText.style.color = "#f88";
-    errText.style.display = "none";
-
-    const btnContainer = document.createElement("div");
-    Object.assign(btnContainer.style, { marginTop: "6px", display: "flex", gap: "8px" });
-
-    const cropBtn = document.createElement("button");
-    cropBtn.innerText = "Crop & Detect";
-    Object.assign(cropBtn.style, {
-      padding: "8px 14px",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      background: "#4CAF50",
-      color: "#fff"
-    });
-    cropBtn.disabled = true;
-
-    const fallbackBtn = document.createElement("button");
-    fallbackBtn.innerText = "Classify Original Image (No Crop)";
-    Object.assign(fallbackBtn.style, {
-      padding: "8px 14px",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      background: "#1976d2",
-      color: "#fff"
-    });
-    fallbackBtn.disabled = true;
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.innerText = "Cancel";
-    Object.assign(cancelBtn.style, {
-      padding: "8px 14px",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      background: "#f44336",
-      color: "#fff"
-    });
-
-    btnContainer.appendChild(cropBtn);
-    btnContainer.appendChild(fallbackBtn);
-    btnContainer.appendChild(cancelBtn);
-
-    card.appendChild(loader);
-    card.appendChild(img);
-    card.appendChild(errText);
-    card.appendChild(btnContainer);
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-
-    cancelBtn.focus();
-
-    function closeOverlay() {
-      try { 
-        if (cropper) {
-          cropper.destroy();
-          cropper = null;
-        }
-      } catch (e) {
-        console.warn("Error cleaning up cropper:", e);
-      }
-      
-      window.removeEventListener("keydown", onKeyDown);
-      
-      if (document.body.contains(overlay)) {
-        overlay.remove();
-      }
-      
-      if (img && img.src && img.src.startsWith('blob:')) {
-        try { URL.revokeObjectURL(img.src); } catch (e) {}
-      }
-    }
-
-    function onKeyDown(e) { 
-      if (e.key === "Escape") closeOverlay(); 
-    }
-    
-    window.addEventListener("keydown", onKeyDown);
-    overlay.addEventListener("click", (ev) => { 
-      if (ev.target === overlay) closeOverlay(); 
-    });
-
-    let cropper = null;
-
-    function showError(msg) {
-      loader.style.display = "none";
-      errText.style.display = "block";
-      errText.innerText = msg;
-      cropBtn.disabled = true;
-      fallbackBtn.disabled = false;
-    }
-
-    // Load the image
-    try {
-      const resp = await fetch(imageUrl, { mode: 'cors' });
-      if (!resp.ok) throw new Error(`Failed to fetch image: ${resp.status}`);
-      const blob = await resp.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      img.src = objectUrl;
-    } catch (fetchErr) {
-      console.warn("Fetch failed or CORS blocked, trying direct image element src:", fetchErr);
-      try {
-        img.crossOrigin = "anonymous";
-        img.src = imageUrl;
-      } catch (e) {
-        console.error("Direct src assign failed:", e);
-        showError("Unable to load image for cropping.");
-        fallbackBtn.disabled = false;
-      }
-    }
-
-    img.addEventListener("load", () => {
-      loader.style.display = "none";
-      img.style.display = "block";
-      cropBtn.disabled = false;
-      fallbackBtn.disabled = false;
-      
-      try {
-        cropper = new Cropper(img, {
-          aspectRatio: 1,
-          viewMode: 1,
-          guides: true,
-          dragMode: "move",
-          zoomable: true,
-          background: false
-        });
-      } catch (e) {
-        console.error("Cropper init failed:", e);
-        showError("Cropper failed to initialize.");
-      }
-    });
-
-    img.addEventListener("error", (e) => {
-      console.error("Image load error", e);
-      showError("Failed to load image. The image may be blocked or missing.");
-    });
-
-    cancelBtn.addEventListener("click", () => { closeOverlay(); });
-
-    fallbackBtn.addEventListener("click", async () => {
-      showMinimalProcessingState();
-      try {
-        await sendMessageSafely({ action: "classifyUrl", url: imageUrl });
-        closeOverlay();
-      } catch (err) {
-        console.error("Fallback classifyUrl message failed:", err);
-        showError(err.message || "Fallback classification failed. Please try again.");
-      }
-    });
-
-    cropBtn.addEventListener("click", async () => {
-      if (!cropper) {
-        showError("Cropper is not ready.");
-        return;
-      }
-      
-      showMinimalProcessingState();
-      
-      try {
-        const croppedCanvas = cropper.getCroppedCanvas({ width: 256, height: 256 });
-        let dataUrl;
-        
-        try {
-          dataUrl = croppedCanvas.toDataURL("image/jpeg", 0.92);
-          
-          // Send the cropped image data to the background script
-          await sendMessageSafely({ 
-            action: "croppedImageReady", 
-            dataUrl,
-            source: "content-main"
-          });
-          
-          closeOverlay();
-        } catch (e) {
-          console.warn("toDataURL failed (likely cross-origin / tainted canvas):", e);
-          try {
-            await sendMessageSafely({ 
-              action: "classifyUrl", 
-              url: imageUrl,
-              source: "content-main"
-            });
-          } catch (err) {
-            console.error("Fallback classification failed:", err);
-            showError(err.message || "Failed to classify image");
-          } finally {
-            closeOverlay();
-          }
-        }
-      } catch (err) {
-        console.error("Crop & detect error:", err);
-        showError("Failed to process the image. Try a different area or use the fallback.");
-      }
-    });
-
-    function showMinimalProcessingState() {
-      loader.style.display = "block";
-      loader.innerText = "⏳ Sending for analysis...";
-      cropBtn.disabled = true;
-      fallbackBtn.disabled = true;
-      cancelBtn.disabled = true;
-    }
-  }
+  // Removed legacy cropping overlay; direct click-to-detect is used instead
 
   console.log("Content script (main) loaded");
   
@@ -364,7 +101,7 @@
       if (img.src.startsWith('http') || img.src.startsWith('https')) {
         const targetUrl = getBestImageUrl(img) || img.src;
         try {
-          const resp = await sendMessageSafely({ action: 'classifyUrl', url: targetUrl });
+          const resp = await sendMessageSafely({ action: 'classifyUrl', url: targetUrl, user_action: 'On-click detect', detection_type: 'On-click detect' });
           renderResultToast(resp && resp.result ? resp.result : resp);
           return;
         } catch (_) { /* fallback below */ }
@@ -377,12 +114,12 @@
         canvas.height = img.naturalHeight || img.height;
         ctx.drawImage(img, 0, 0);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-        const resp = await sendMessageSafely({ action: 'analyzeImage', imageData: dataUrl, source: 'click-to-detect' });
+        const resp = await sendMessageSafely({ action: 'analyzeImage', imageData: dataUrl, source: 'click-to-detect', user_action: 'On-click detect', detection_type: 'On-click detect' });
         renderResultToast(resp && resp.result ? resp.result : resp);
       } catch (err) {
         // As a last resort, try classifyUrl even if non-http (may fail silently)
         try { 
-          const resp = await sendMessageSafely({ action: 'classifyUrl', url: img.src });
+          const resp = await sendMessageSafely({ action: 'classifyUrl', url: img.src, user_action: 'On-click detect', detection_type: 'On-click detect' });
           renderResultToast(resp && resp.result ? resp.result : resp);
         } catch (_) {}
       }

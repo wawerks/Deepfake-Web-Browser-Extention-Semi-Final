@@ -40,8 +40,8 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["cropper.min.js", "content-main.js"],
-      "css": ["cropper.min.css", "styles.css"],
+      "js": ["content-main.js"],
+      "css": ["styles.css"],
       "run_at": "document_idle"
     },
     {
@@ -52,7 +52,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["cropper.min.js", "cropper.min.css", "icon1.jpg", "icon2.jpg", "icon3.jpg", "icons/*.png"],
+      "resources": ["icon1.jpg", "icon2.jpg", "icon3.jpg", "icons/*.png"],
       "matches": ["<all_urls>"],
       "use_dynamic_url": true
     }

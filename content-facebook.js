@@ -300,7 +300,7 @@
       
       try {
         const img = await createImageFromFile(file);
-        const result = await analyzeImage(img);
+        const result = await analyzeImage(img, 'upload');
         
         // Result badge intentionally disabled in this script
       } catch (error) {
@@ -339,7 +339,7 @@
   }
 
   // Analyze an image
-  async function analyzeImage(img) {
+  async function analyzeImage(img, sourceTag) {
     if (!img || !img.src) {
       console.error('No image provided for analysis');
       return null;
@@ -349,6 +349,7 @@
       showNotification('AI Image Guard', 'Analyzing image', 'info');
       const badge = SHOW_BADGES ? createBadge('Analyzing...', 'info') : null;
       if (badge) addBadgeToImage(img, badge);
+      const actionLabel = (sourceTag === 'upload') ? 'Upload interception' : 'On-click detect';
       
       // Prefer classifying by URL for network images to avoid tainted canvas
       let response = null;
@@ -356,7 +357,7 @@
       const isHttp = /^https?:\/\//i.test(src);
       if (isHttp) {
         try {
-          response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook' });
+          response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
         } catch (_) {
           response = null; // fall through to other strategies
         }
@@ -367,7 +368,7 @@
         try {
           const dataUrl = await blobUrlToDataURL(src);
           if (dataUrl) {
-            response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData: dataUrl, source: 'facebook' });
+            response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData: dataUrl, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
           }
         } catch (_) {
           response = null;
@@ -380,12 +381,12 @@
         if (!imageData) {
           // One more fallback: attempt classifyUrl even if not http(s)
           try {
-            response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook' });
+            response = await chrome.runtime.sendMessage({ action: 'classifyUrl', url: src, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
           } catch (e) {
             throw new Error('Could not get image data');
           }
         } else {
-          response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData, source: 'facebook' });
+          response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
         }
       }
       

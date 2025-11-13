@@ -2,13 +2,5 @@ fastapi
 uvicorn[standard]
 pillow
 requests
-tensorflow
-numpy
-transformers
-torch
-safetensors
-fastapi
-opencv-python
 python-multipart
-timm>=0.9.0
 python-dotenv
