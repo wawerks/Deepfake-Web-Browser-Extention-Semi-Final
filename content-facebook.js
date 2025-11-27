@@ -289,6 +289,17 @@ backdrop.addEventListener('click', () => {
 
   // Note: confirm handler will be wired per-call via returned promise listeners
 }
+// Helper function to close the confirmation modal
+function closeUploadConfirmationModal() {
+  const confirmModal = document.getElementById('ai-upload-confirm-modal');
+  if (confirmModal && confirmModal.style.display !== 'none') {
+    confirmModal.style.display = 'none';
+    confirmModal.setAttribute('aria-hidden', 'true');
+    return true;
+  }
+  return false;
+}
+
 // showUploadConfirmation returns a Promise<boolean>
 function showUploadConfirmation({ pct = 0, title = 'This image may be AI-generated', message = '' } = {}) {
   ensureUploadConfirmationModal();
@@ -488,6 +499,33 @@ function showUploadConfirmation({ pct = 0, title = 'This image may be AI-generat
     if (SETTINGS.clickToDetect) {
       img.addEventListener('click', (e) => {
         e.stopPropagation();
+        
+        // Filter out small profile pictures/chat heads
+        const isSmallProfilePicture = (img.naturalWidth <= 100 && img.naturalHeight <= 100) || 
+                                       (img.width <= 64 && img.height <= 64);
+        
+        // Check if image is in a profile picture container
+        const isInProfileContainer = img.closest('[role="img"]') !== null ||
+                                      img.closest('[aria-label*="profile"]') !== null ||
+                                      img.closest('[aria-label*="Profile picture"]') !== null ||
+                                      img.closest('a[href*="/profile"]') !== null ||
+                                      img.closest('a[href*="/user"]') !== null ||
+                                      img.closest('[class*="profile"]') !== null ||
+                                      img.closest('[class*="avatar"]') !== null ||
+                                      img.closest('[class*="chat"]') !== null ||
+                                      img.closest('[class*="ChatHead"]') !== null;
+        
+        // Skip small profile pictures/chat heads
+        if (isSmallProfilePicture || isInProfileContainer) {
+          console.log("[AI Image Guard Debug] Skipping small profile picture/chat head:", {
+            naturalSize: `${img.naturalWidth}x${img.naturalHeight}`,
+            displayedSize: `${img.width}x${img.height}`,
+            isSmallProfilePicture,
+            isInProfileContainer
+          });
+          return;
+        }
+        
         analyzeImage(img);
       });
     }
@@ -557,8 +595,80 @@ function showUploadConfirmation({ pct = 0, title = 'This image may be AI-generat
 
   function setupActionInterceptors() {
     try {
+      // Monitor for dialog close events (back button, cancel, etc.) to close our confirmation modal
+      let dialogCloseObserver = null;
+      try {
+        dialogCloseObserver = new MutationObserver((mutations) => {
+          // Check if any dialogs were removed or hidden
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+              mutation.removedNodes.forEach((node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  const isDialog = node.getAttribute && (
+                    node.getAttribute('role') === 'dialog' ||
+                    node.getAttribute('aria-modal') === 'true'
+                  );
+                  if (isDialog) {
+                    // Dialog was closed - close our confirmation modal if it's open
+                    if (closeUploadConfirmationModal()) {
+                      console.log('[Facebook Scanner] Closed confirmation modal - dialog was removed');
+                    }
+                  }
+                }
+              });
+            }
+            // Check for aria-hidden changes
+            if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
+              const target = mutation.target;
+              if (target.getAttribute && target.getAttribute('role') === 'dialog') {
+                const isHidden = target.getAttribute('aria-hidden') === 'true';
+                if (isHidden) {
+                  // Dialog was hidden - close our confirmation modal
+                  if (closeUploadConfirmationModal()) {
+                    console.log('[Facebook Scanner] Closed confirmation modal - dialog was hidden');
+                  }
+                }
+              }
+            }
+          });
+        });
+        dialogCloseObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['aria-hidden']
+        });
+      } catch (err) {
+        console.warn('[Facebook Scanner] Dialog observer setup failed:', err);
+      }
+
       document.addEventListener('click', async (e) => {
         try {
+          // Check if user clicked back button, cancel, or close button in post settings
+          const target = e.target;
+          const targetText = (target.innerText || target.textContent || '').trim().toLowerCase();
+          const ariaLabel = target.getAttribute && target.getAttribute('aria-label');
+          
+          const isBackButton = ariaLabel === 'Back' || 
+            target.closest && target.closest('[aria-label="Back"]') ||
+            targetText === 'back';
+          
+          const isCancelButton = ariaLabel === 'Cancel' || 
+            target.closest && target.closest('[aria-label="Cancel"]') ||
+            targetText === 'cancel';
+          
+          const isCloseButton = ariaLabel === 'Close' || 
+            target.closest && target.closest('[aria-label="Close"]') ||
+            target.closest && target.closest('svg[aria-label="Close"]') ||
+            target.closest && target.closest('[aria-label*="close" i]');
+          
+          if (isBackButton || isCancelButton || isCloseButton) {
+            // User clicked back/cancel/close - close our confirmation modal
+            if (closeUploadConfirmationModal()) {
+              console.log('[Facebook Scanner] Closed confirmation modal due to dialog navigation');
+            }
+          }
+
           const dialog = e.target && typeof e.target.closest === 'function'
             ? e.target.closest(CONFIG.SELECTORS.PREVIEW_CONTAINER || 'div[role="dialog"]')
             : null;
@@ -732,7 +842,7 @@ function blockMultipleUpload(files) {
         try {
           const dataUrl = await blobUrlToDataURL(src);
           if (dataUrl) {
-            response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData: dataUrl, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
+            response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData: dataUrl, imageSource: src, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
           }
         } catch (_) {
           response = null;
@@ -750,7 +860,7 @@ function blockMultipleUpload(files) {
             throw new Error('Could not get image data');
           }
         } else {
-          response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
+          response = await chrome.runtime.sendMessage({ action: 'analyzeImage', imageData, imageSource: src, source: 'facebook', user_action: actionLabel, detection_type: actionLabel });
         }
       }
       

@@ -138,7 +138,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         try {
           const imgResp = await Promise.race([
             fetch(info.srcUrl, { mode: 'cors' }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Image fetch timed out.")), 8000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Image fetch timed out.")), 15000))
           ]);
           if (!imgResp.ok) throw new Error(`Image fetch ${imgResp.status}`);
           const blob = await imgResp.blob();
@@ -150,7 +150,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           __tReq = Date.now() / 1000;
           const resp = await Promise.race([
             fetch(`${serverUrl}/classify/file`, { method: "POST", body: formData }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 8000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 15000))
           ]);
           if (!resp.ok) throw new Error("Deepfake detection request failed.");
           data = await resp.json();
@@ -164,7 +164,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: info.srcUrl })
             }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 8000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timed out.")), 15000))
           ]);
           if (!response.ok) throw new Error("Deepfake detection request failed.");
           data = await response.json();

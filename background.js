@@ -162,6 +162,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       let __tReq = null, __tResp = null, __tNotif = null;
       let __imgId = null;
       const actionLabel = (request && (request.detection_type || request.user_action)) || 'On-click detect';
+      // Use the passed imageSource URL, or fallback to 'dataurl' if not provided
+      // Check for null/undefined/empty string explicitly
+      let imageSourceUrl = 'dataurl';
+      if (request.imageSource) {
+        const src = String(request.imageSource);
+        if (src && src !== 'null' && src.trim() !== '') {
+          imageSourceUrl = src;
+        }
+      }
+      
+      // Debug logging to track what URL is being used
+      console.log("[AI Image Guard Debug] Using imageSource for logging:", imageSourceUrl.substring(0, 150));
       try {
         try { chrome.storage?.local?.set({ lastToast: { title: 'AI Image Guard', message: 'Analyzing image', type: 'info', ts: Date.now() } }); } catch (_) {}
         const blob = dataURLToBlob(request.imageData);
@@ -185,7 +197,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const confVal = Number(result?.confidence);
         if (!isFinite(confVal) || confVal <= 0 || result?.error) {
           try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis unavailable', message: String(result?.error || 'Service limit reached or invalid response'), type: 'error', ts: Date.now() } }); __tNotif = Date.now() / 1000; } catch (_) {}
-          logDetection({ image_id: __imgId, image_source: 'dataurl', predicted_label: null, confidence_score: Number(result?.confidence) || null, api_status: 'error', error_message: String(result?.error || 'Invalid result'), user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
+          logDetection({ image_id: __imgId, image_source: imageSourceUrl, predicted_label: null, confidence_score: Number(result?.confidence) || null, api_status: 'error', error_message: String(result?.error || 'Invalid result'), user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
           sendResponse({ success: false, error: String(result?.error || 'Invalid result') });
           return;
         }
@@ -201,13 +213,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }
           __tNotif = Date.now() / 1000;
         } catch (_) {}
-        logDetection({ image_id: __imgId, image_source: 'dataurl', predicted_label: (result?.no_face ? 'NO_FACE' : (result?.is_fake ? 'FAKE' : 'REAL')), confidence_score: Number(result?.confidence) || null, api_status: 'success', error_message: null, user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
+        logDetection({ image_id: __imgId, image_source: imageSourceUrl, predicted_label: (result?.no_face ? 'NO_FACE' : (result?.is_fake ? 'FAKE' : 'REAL')), confidence_score: Number(result?.confidence) || null, api_status: 'success', error_message: null, user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
         sendResponse({ success: true, result });
       } catch (e) {
         console.error('analyzeImage failed:', e);
         try { chrome.storage?.local?.set({ lastToast: { title: 'Analysis error', message: String(e?.message || 'Analyze failed'), type: 'error', ts: Date.now() } }); __tNotif = Date.now() / 1000; } catch (_) {}
         __tResp = __tResp || Date.now() / 1000;
-        logDetection({ image_id: __imgId || ('img-' + Math.random().toString(36).slice(2)), image_source: 'dataurl', predicted_label: null, confidence_score: null, api_status: 'error', error_message: String(e?.message || 'Analyze failed'), user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
+        logDetection({ image_id: __imgId || ('img-' + Math.random().toString(36).slice(2)), image_source: imageSourceUrl, predicted_label: null, confidence_score: null, api_status: 'error', error_message: String(e?.message || 'Analyze failed'), user_action: actionLabel, detection_type: actionLabel, pipeline_timings: { capture_start: __tCap, api_request_start: __tReq, api_response_end: __tResp, notification_sent: __tNotif } });
         sendResponse({ success: false, error: e.message || 'Analyze failed' });
       }
     })();
