@@ -274,8 +274,12 @@
   border-radius: 12px;
   width: 100%;
   max-width: 300px;
+  max-height: 80vh;
   box-shadow: 0 10px 25px rgba(0,0,0,0.15);
   text-align: left;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-content h2 {
@@ -283,12 +287,53 @@
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--primary-color);
+  flex-shrink: 0;
+}
+
+.modal-content .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 5px;
+  margin-bottom: 10px;
+}
+
+.modal-content .modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-content .modal-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.modal-content .modal-body::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 3px;
+}
+
+.modal-content .modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-hover);
 }
 
 .modal-content p {
   font-size: 0.85rem;
   color: var(--text-light);
   line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+.modal-content ul {
+  margin: 10px 0;
+  padding-left: 20px;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.modal-content .modal-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 10px;
 }
 
     @keyframes spin {
@@ -335,7 +380,10 @@
     <!-- Actions removed per request -->
     
     <div class="footer">
-      AI Image Guard &copy; 2025 | <a href="#" id="privacyLink">Privacy Policy</a>
+      AI Image Guard &copy; 2025 | 
+      <a href="#" id="privacyLink">Privacy</a> | 
+      <a href="#" id="termsLink">Terms</a> | 
+      <a href="#" id="apiPolicyLink">API Policy</a>
     </div>
   </div>
   
@@ -343,13 +391,126 @@
 <div id="privacyModal" class="modal hidden">
   <div class="modal-content">
     <h2>Privacy Policy</h2>
-    <p>
-      AI Image Guard does not collect, store, or transmit any personal data. 
-      Images are only processed when you perform a detection action, and all 
-      analysis is sent securely to your configured local or cloud server. 
-      No browsing activity, credentials, or private content is stored or shared.
-    </p>
-    <button id="closePrivacy" class="btn btn-primary" style="margin-top:12px;">Close</button>
+    <div class="modal-body">
+      <p>
+        <strong>Last Updated: December 2025</strong>
+      </p>
+      <p>
+        This Extension analyzes images for authenticity using Sightengine AI Detection API. 
+        We do not collect personal information such as names, emails, or browsing history.
+      </p>
+      <p>
+        <strong>What is transmitted:</strong>
+      </p>
+      <ul>
+        <li>Image data (URLs or file bytes) sent to Sightengine for analysis</li>
+        <li>Detection results and confidence scores</li>
+      </ul>
+      <p>
+        <strong>Important:</strong>
+      </p>
+      <ul>
+        <li>Images are processed only on demand, never automatically</li>
+        <li>Images are not stored, logged, or retained after analysis</li>
+        <li>Your images are not used to train AI systems</li>
+      </ul>
+      <p>
+        <strong>Third-Party Service:</strong> Sightengine (https://sightengine.com/) 
+        performs the analysis and applies its own privacy policies.
+      </p>
+      <p>
+        <a href="PRIVACY_POLICY.md" target="_blank" style="color: var(--primary-color); text-decoration: none;">Read Full Privacy Policy</a>
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button id="closePrivacy" class="btn btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Terms of Service Modal -->
+<div id="termsModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Terms of Use</h2>
+    <div class="modal-body">
+      <p>
+        <strong>Last Updated: December 2025</strong>
+      </p>
+      <p>
+        By using this Extension, you agree to these Terms of Use.
+      </p>
+      <p>
+        <strong>Intended Use:</strong>
+      </p>
+      <ul>
+        <li>Digital literacy and research</li>
+        <li>Image authenticity awareness</li>
+        <li>Non-commercial personal use</li>
+      </ul>
+      <p>
+        <strong>Prohibited Uses:</strong>
+      </p>
+      <ul>
+        <li>Harassment, surveillance, or stalking</li>
+        <li>False accusations based on results</li>
+        <li>Automated scraping or bulk surveillance</li>
+        <li>Law enforcement or biometric systems</li>
+        <li>Any illegal or unethical purposes</li>
+      </ul>
+      <p>
+        <strong>Important:</strong> Detection results are assistive, not definitive. 
+        Confidence scores are probabilistic and may contain errors.
+      </p>
+      <p>
+        <a href="TERMS_OF_SERVICE.md" target="_blank" style="color: var(--primary-color); text-decoration: none;">Read Full Terms of Use</a>
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button id="closeTerms" class="btn btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Third-Party API Policy Modal -->
+<div id="apiPolicyModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Third-Party API Policy</h2>
+    <div class="modal-body">
+      <p>
+        <strong>Last Updated: December 2025</strong>
+      </p>
+      <p style="padding: 10px; background-color: #fff3cd; border-left: 4px solid #f59e0b; border-radius: 4px; margin-bottom: 10px;">
+        <strong>⚠️ Third-Party Service: Sightengine</strong>
+      </p>
+      <p>
+        This Extension uses <strong>Sightengine</strong> (https://sightengine.com/) 
+        for image authenticity detection.
+      </p>
+      <p>
+        <strong>What this means:</strong>
+      </p>
+      <ul>
+        <li>Image data is sent to Sightengine servers for analysis</li>
+        <li>Sightengine applies its own privacy and data handling policies</li>
+        <li>We do not control Sightengine's operations or data retention</li>
+        <li>By using this Extension, you consent to image transmission to Sightengine</li>
+      </ul>
+      <p>
+        <strong>Your Consent:</strong> By installing and using this Extension, you 
+        acknowledge that images may be transmitted to Sightengine and consent to 
+        this third-party processing for authenticity detection.
+      </p>
+      <p>
+        <strong>Compliance:</strong> We follow Philippines Data Privacy Act (RA 10173) 
+        and EU AI Act (2024) transparency guidelines.
+      </p>
+      <p>
+        <a href="THIRD_PARTY_API_POLICY.md" target="_blank" style="color: var(--primary-color); text-decoration: none;">Read Full Third-Party API Policy</a>
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button id="closeApiPolicy" class="btn btn-primary">Close</button>
+    </div>
   </div>
 </div>
 

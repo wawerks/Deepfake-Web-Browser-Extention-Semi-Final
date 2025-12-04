@@ -3,6 +3,7 @@
   "name": "AI Image Guard",
   "version": "1.0",
   "description": "Detect AI-generated images with Upload Filterization, On-click and right-click detect menu, with real-time detection.",
+  "homepage_url": "https://github.com/yourusername/ai-image-guard",
   "permissions": [
     "contextMenus",
     "activeTab",

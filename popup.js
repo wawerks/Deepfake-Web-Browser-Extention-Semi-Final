@@ -51,21 +51,83 @@ document.addEventListener("DOMContentLoaded", () => {
       if (statusDetails) statusDetails.textContent = online ? 'Connected to detection server' : 'Connecting to detection server';
     } catch (_) {}
   }
-  document.getElementById("privacyLink").addEventListener("click", (e) => {
-  e.preventDefault();
-  document.getElementById("privacyModal").classList.remove("hidden");
-});
-
-document.getElementById("closePrivacy").addEventListener("click", () => {
-  document.getElementById("privacyModal").classList.add("hidden");
-});
-
-// Optional: close modal if background is clicked
-document.getElementById("privacyModal").addEventListener("click", (e) => {
-  if (e.target === e.currentTarget) {
-    e.currentTarget.classList.add("hidden");
+  // Privacy Policy Modal
+  const privacyLink = document.getElementById("privacyLink");
+  const privacyModal = document.getElementById("privacyModal");
+  const closePrivacy = document.getElementById("closePrivacy");
+  
+  if (privacyLink && privacyModal) {
+    privacyLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      privacyModal.classList.remove("hidden");
+    });
   }
-});
+  
+  if (closePrivacy && privacyModal) {
+    closePrivacy.addEventListener("click", () => {
+      privacyModal.classList.add("hidden");
+    });
+  }
+  
+  if (privacyModal) {
+    privacyModal.addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.add("hidden");
+      }
+    });
+  }
+
+  // Terms of Service Modal
+  const termsLink = document.getElementById("termsLink");
+  const termsModal = document.getElementById("termsModal");
+  const closeTerms = document.getElementById("closeTerms");
+  
+  if (termsLink && termsModal) {
+    termsLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      termsModal.classList.remove("hidden");
+    });
+  }
+  
+  if (closeTerms && termsModal) {
+    closeTerms.addEventListener("click", () => {
+      termsModal.classList.add("hidden");
+    });
+  }
+  
+  if (termsModal) {
+    termsModal.addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.add("hidden");
+      }
+    });
+  }
+
+  // Third-Party API Policy Modal
+  const apiPolicyLink = document.getElementById("apiPolicyLink");
+  const apiPolicyModal = document.getElementById("apiPolicyModal");
+  const closeApiPolicy = document.getElementById("closeApiPolicy");
+  
+  if (apiPolicyLink && apiPolicyModal) {
+    apiPolicyLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      apiPolicyModal.classList.remove("hidden");
+    });
+  }
+  
+  if (closeApiPolicy && apiPolicyModal) {
+    closeApiPolicy.addEventListener("click", () => {
+      apiPolicyModal.classList.add("hidden");
+    });
+  }
+  
+  if (apiPolicyModal) {
+    apiPolicyModal.addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.add("hidden");
+      }
+    });
+  }
 
   refreshHealth();
   setInterval(refreshHealth, 15000);

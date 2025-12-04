@@ -876,11 +876,11 @@ function blockMultipleUpload(files) {
       const confidencePct = Math.round((result.confidence || 0) * 100);
       const complement = Math.max(0, 100 - confidencePct);
       if (result.is_fake) {
-        showNotification('Likely AI-generated', `Confidence: ${confidencePct}%\nReal: ${complement}%`, 'warning');
+        showNotification('Analysis Complete', `Likely AI-generated Confidence: ${confidencePct}%\nReal: ${complement}%`, 'warning');
       } else if (result.no_face) {
-        showNotification('Analysis complete', 'No face detected in the image', 'info');
+        showNotification('Analysis Complete', 'No face detected in the image', 'info');
       } else {
-        showNotification('Likely real', `Confidence: ${confidencePct}%\nAI: ${complement}%`, 'success');
+        showNotification('Analysis Complete', `Likely real Confidence: ${confidencePct}%\nAI: ${complement}%`, 'success');
       }
       
       return result;
@@ -1049,7 +1049,7 @@ function blockMultipleUpload(files) {
       const v = variants[normalized.type] || variants.info;
       currentToast.style.background = v.bg;
       currentToast.style.color = v.fg;
-      currentToast.style.borderLeft = `4px solid ${v.border}`;
+      currentToast.style.borderLeft = `6px solid ${v.border}`;
       const content = currentToast.firstChild;
       if (content && content.firstChild) content.firstChild.textContent = normalized.title;
       if (content && content.children && content.children[1]) content.children[1].textContent = normalized.message;
@@ -1097,22 +1097,47 @@ function blockMultipleUpload(files) {
     const toast = document.createElement('div');
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
-    toast.style.cssText = `display:flex;align-items:start;gap:12px;padding:12px 14px;max-width:360px;background:${v.bg};color:${v.fg};border-left:4px solid ${v.border};border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;transform:translateX(120%);opacity:0;animation: slideIn 220ms ease forwards;`;
+    // Match the bigger toast size from content-main.js
+    toast.style.cssText = `display:flex;align-items:start;gap:16px;padding:20px 24px;max-width:480px;min-width:394px;background:${v.bg};color:${v.fg};border-left:6px solid ${v.border};border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;transform:translateX(120%);opacity:0;animation: slideIn 220ms ease forwards;`;
 
     const content = document.createElement('div');
+    content.style.cssText = 'flex:1;';
     const titleEl = document.createElement('div');
     titleEl.textContent = title;
-    titleEl.style.cssText = 'font-weight:600;letter-spacing:.2px;margin-bottom:2px;';
-    const msgEl = document.createElement('div');
-    msgEl.textContent = message;
-    msgEl.style.cssText = 'opacity:.9;line-height:1.35;white-space:pre-line;';
+    titleEl.style.cssText = 'font-weight:700;font-size:18px;letter-spacing:.3px;margin-bottom:12px;color:' + v.fg + ';';
+    
+    // Parse message by newlines and format each line separately (matching content-main.js)
+    const msgContainer = document.createElement('div');
+    if (message && typeof message === 'string') {
+      const parts = message.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      if (parts.length > 1) {
+        // Multiple lines - format each separately
+        parts.forEach((part, index) => {
+          const line = document.createElement('div');
+          line.style.cssText = index === 0 
+            ? 'opacity:.95;line-height:1.6;font-size:16px;font-weight:500;'
+            : 'opacity:.95;line-height:1.6;font-size:16px;font-weight:500;margin-top:4px;';
+          line.textContent = part;
+          msgContainer.appendChild(line);
+        });
+        msgContainer.style.cssText = 'opacity:.95;';
+      } else {
+        // Single line - use standard formatting
+        msgContainer.textContent = message || ''; 
+        msgContainer.style.cssText = 'opacity:.95;line-height:1.6;white-space:pre-line;font-size:16px;font-weight:500;word-wrap:break-word;';
+      }
+    } else {
+      msgContainer.textContent = message || ''; 
+      msgContainer.style.cssText = 'opacity:.95;line-height:1.6;white-space:pre-line;font-size:16px;font-weight:500;word-wrap:break-word;';
+    }
+    
     content.appendChild(titleEl);
-    content.appendChild(msgEl);
+    content.appendChild(msgContainer);
 
     const closeBtn = document.createElement('button');
     closeBtn.setAttribute('aria-label', 'Close notification');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'margin-left:auto;background:transparent;border:none;color:inherit;cursor:pointer;font-size:14px;padding:2px;opacity:.7;';
+    closeBtn.style.cssText = 'margin-left:auto;background:transparent;border:none;color:inherit;cursor:pointer;font-size:20px;font-weight:600;padding:4px 8px;opacity:.8;line-height:1;flex-shrink:0;';
     closeBtn.onclick = () => {
       toast.style.animation = 'slideOut 200ms ease forwards';
       setTimeout(() => toast.remove(), 200);

@@ -912,13 +912,14 @@ document.addEventListener('click', async (e) => {
         const complement = Math.max(0, 100 - confPct);
         const label = p.is_fake ? 'Likely AI-generated' : 'Likely real';
         const extra = p.is_fake ? `Real: ${complement}%` : `AI: ${complement}%`;
-        showToast('Detection Result', `${label}\nConfidence: ${confPct}%\n${extra}`, p.is_fake ? 'warning' : 'success');
+        // Format: "Likely AI-generated Confidence: 71%" on one line, then "Real: 29%" on next line
+        showToast('Analysis Complete', `${label} Confidence: ${confPct}%\n${extra}`, p.is_fake ? 'warning' : 'success');
         return;
       }
       // Ensemble path
       if (p.final_decision) {
         const fd = p.final_decision;
-        showToast('Detection Result', `${fd.final_label}\nReal: ${fd.real_confidence}% | Fake: ${fd.fake_confidence}%`, 'info');
+        showToast('Analysis Complete', `${fd.final_label}\nReal: ${fd.real_confidence}% | Fake: ${fd.fake_confidence}%`, 'info');
         return;
       }
       showToast('Analysis complete', 'Unknown response format', 'info');
@@ -929,6 +930,10 @@ document.addEventListener('click', async (e) => {
   
   // Lightweight toast system and listener so background can show results anywhere
   function showToast(title, message, type = 'info') {
+    // Don't show toasts on Facebook - content-facebook.js handles them
+    if (window.location.hostname.includes('facebook.com')) {
+      return;
+    }
     try {
       let container = document.getElementById('deepfake-toast-container');
       if (!container) {
@@ -941,12 +946,43 @@ document.addEventListener('click', async (e) => {
       const variants = { info:['#0ea5e9','#0b1220','#e5f6ff'], success:['#22c55e','#0c1a14','#eafff1'], warning:['#f59e0b','#1a150b','#fff7e6'], error:['#ef4444','#1a0b0b','#ffecec'] };
       const v = variants[type] || variants.info;
       const toast = document.createElement('div');
-      toast.style.cssText = `display:flex;align-items:start;gap:12px;padding:12px 14px;max-width:360px;background:${v[1]};color:${v[2]};border-left:4px solid ${v[0]};border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;transition:opacity .18s ease-out,transform .18s ease-out;opacity:0;transform:translateY(-8px) scale(1);`;
+      // Make toast much bigger - increased padding, max-width, and font sizes
+      toast.style.cssText = `display:flex;align-items:start;gap:16px;padding:20px 24px;max-width:480px;min-width:394px;background:${v[1]};color:${v[2]};border-left:6px solid ${v[0]};border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;transition:opacity .18s ease-out,transform .18s ease-out;opacity:0;transform:translateY(-8px) scale(1);`;
       const content = document.createElement('div');
-      const t = document.createElement('div'); t.textContent = title || 'AI Image Guard'; t.style.cssText = 'font-weight:600;letter-spacing:.2px;margin-bottom:2px;';
-      const m = document.createElement('div'); m.textContent = message || ''; m.style.cssText = 'opacity:.9;line-height:1.35;white-space:pre-line;';
+      content.style.cssText = 'flex:1;';
+      const t = document.createElement('div'); 
+      t.textContent = title || 'AI Image Guard'; 
+      t.style.cssText = 'font-weight:700;font-size:18px;letter-spacing:.3px;margin-bottom:12px;color:' + v[2] + ';';
+      const m = document.createElement('div'); 
+      // Parse message by newlines and format each line separately
+      if (message && typeof message === 'string') {
+        const parts = message.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+        
+        if (parts.length > 1) {
+          // Multiple lines - format each separately
+          parts.forEach((part, index) => {
+            const line = document.createElement('div');
+            line.style.cssText = index === 0 
+              ? 'opacity:.95;line-height:1.6;font-size:16px;font-weight:500;'
+              : 'opacity:.95;line-height:1.6;font-size:16px;font-weight:500;margin-top:4px;';
+            line.textContent = part;
+            m.appendChild(line);
+          });
+          m.style.cssText = 'opacity:.95;';
+        } else {
+          // Single line - use standard formatting
+          m.textContent = message || ''; 
+          m.style.cssText = 'opacity:.95;line-height:1.6;white-space:pre-line;font-size:16px;font-weight:500;word-wrap:break-word;';
+        }
+      } else {
+        m.textContent = message || ''; 
+        m.style.cssText = 'opacity:.95;line-height:1.6;white-space:pre-line;font-size:16px;font-weight:500;word-wrap:break-word;';
+      }
       content.appendChild(t); content.appendChild(m);
-      const closeBtn = document.createElement('button'); closeBtn.textContent = '✕'; closeBtn.setAttribute('aria-label','Close notification'); closeBtn.style.cssText = 'margin-left:auto;background:transparent;border:none;color:inherit;cursor:pointer;font-size:14px;padding:2px;opacity:.7;';
+      const closeBtn = document.createElement('button'); 
+      closeBtn.textContent = '✕'; 
+      closeBtn.setAttribute('aria-label','Close notification'); 
+      closeBtn.style.cssText = 'margin-left:auto;background:transparent;border:none;color:inherit;cursor:pointer;font-size:20px;font-weight:600;padding:4px 8px;opacity:.8;line-height:1;flex-shrink:0;';
       const removeToast = () => { if (toast.parentNode) toast.parentNode.removeChild(toast); };
       closeBtn.onclick = removeToast;
       toast.onclick = removeToast;
